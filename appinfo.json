@@ -1,0 +1,17 @@
+{
+  "id": "com.iptv.khalid",
+  "version": "1.0.1",
+  "vendor": "Khalid",
+  "type": "web",
+  "main": "index.html",
+  "title": "IPTV Stalker",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "requiredPermissions": [
+    "network.operation"
+  ],
+  "nativeLifeCycleInterfaceVersion": 2,
+  "services": [
+    "com.iptv.khalid.service"
+  ]
+}

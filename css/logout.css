@@ -1,0 +1,17 @@
+/* Exit Dialog Update */
+.exit-actions {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.btn-warning {
+    background: #f59e0b; /* Amber-500 */
+    color: #1e293b;
+}
+
+.btn-warning:focus, .btn-warning:hover, .btn-warning.active {
+    background: #d97706; /* Amber-600 */
+    transform: scale(1.05);
+}

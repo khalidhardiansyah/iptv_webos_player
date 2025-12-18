@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stalker Player</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/home.css">
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <!-- Home Screen -->
+    <div id="screen-home" class="screen active">
+        <div class="home-container">
+            <!-- Header -->
+            <div class="home-header">
+                <div class="app-icon">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="12" fill="url(#gradient)" />
+                        <path d="M16 18L24 14L32 18V30L24 34L16 30V18Z" stroke="white" stroke-width="2" fill="none" />
+                        <defs>
+                            <linearGradient id="gradient" x1="0" y1="0" x2="48" y2="48">
+                                <stop offset="0%" stop-color="#8B5CF6" />
+                                <stop offset="100%" stop-color="#6366F1" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <button id="refresh-btn" class="refresh-btn" data-focusable="true" title="Refresh portals">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                    </svg>
+                    <span class="refresh-hint">Yellow</span>
+                </button>
+                <div class="app-title-group">
+                    <h1 class="app-title">Stalker Player</h1>
+                    <p class="app-subtitle">Manage and connect to your IPTV portals</p>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="portals-loading" class="portals-loading">
+                <div class="spinner"></div>
+                <div class="loading-text">Loading portals...</div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="portals-empty" class="portals-empty hidden">
+                <div class="empty-icon">📺</div>
+                <div class="empty-title">No Portals Found</div>
+                <div class="empty-message">Add a portal in Supabase to get started</div>
+            </div>
+
+            <!-- Error State -->
+            <div id="portals-error" class="portals-error hidden">
+                <div class="error-icon">⚠️</div>
+                <div class="error-title">Connection Error</div>
+                <div class="error-message" id="error-message-text"></div>
+            </div>
+
+            <!-- Portals Grid -->
+            <div id="portals-grid" class="portals-grid hidden">
+                <!-- Portal cards will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug Console -->
+    <div id="debug-console"
+        style="position: fixed; top: 0; right: 0; width: 40%; height: 100vh; background: rgba(0,0,0,0.8); color: lime; font-family: monospace; font-size: 14px; overflow-y: auto; z-index: 9999; pointer-events: none; padding: 20px; display: none;">
+    </div>
+
+    <!-- Scripts -->
+    <script src="webOSTVjs-1.2.10/webOSTV.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/spatial_navigation.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/home.js"></script>
+</body>
+
+</html>

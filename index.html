@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPTV Stalker</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/sidebar.css">
+  <link rel="stylesheet" href="css/vod.css">
+  <link rel="stylesheet" href="css/debug.css">
+  <link rel="stylesheet" href="css/logout.css">
+
+  <!-- mpegts.js for MPEG-TS playback -->
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+  <!-- hls.js for HLS playback -->
+  <script src="js/hls.min.js"></script>
+</head>
+
+<body>
+  <!-- Loading Screen -->
+  <div id="screen-loading" class="screen active">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Connecting to portal...</div>
+    </div>
+  </div>
+
+  <!-- Main Screen with Sidebar -->
+  <div id="screen-main" class="screen">
+    <!-- Content Type Switcher -->
+    <div class="content-type-switcher">
+      <button class="content-type-tab active" data-type="live" data-focusable="true">📺 Live TV</button>
+      <button class="content-type-tab" data-type="movies" data-focusable="true">🎬 Movies</button>
+      <button class="content-type-tab" data-type="series" data-focusable="true">🍿 Series</button>
+    </div>
+
+    <!-- Sidebar for Categories -->
+    <div class="sidebar">
+
+
+      <div class="sidebar-header">
+        <h2>Categories</h2>
+        <input type="text" id="category-search" class="search-input" placeholder="Search categories..."
+          data-focusable="true">
+      </div>
+      <div id="categories-container" class="sidebar-list"></div>
+    </div>
+
+    <!-- Main Content for Channels -->
+    <div class="main-content">
+      <div class="content-header">
+        <h1 id="channels-title">Select a category</h1>
+        <!-- Added Channel Search Input -->
+        <input type="text" id="channel-search" class="search-input" placeholder="Search channels..."
+          data-focusable="true"
+          style="margin-left: 20px; padding: 5px 10px; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white; width: 300px;">
+      </div>
+      <div id="channels-container" class="channels-grid"></div>
+    </div>
+  </div>
+
+  <!-- Player Screen -->
+  <div id="screen-player" class="screen">
+    <video id="video-player" class="video-js" preload="auto" crossorigin="anonymous"></video>
+
+    <!-- VOD Controls (Seek & Progress) -->
+    <!-- VOD Controls (Unified UI) -->
+    <div id="vod-controls" class="vod-controls hidden">
+      <!-- Progress Bar (Top of controls) -->
+      <div id="vod-progress-container" class="progress-container">
+        <div id="vod-progress-fill" class="progress-fill">
+          <div class="progress-thumb"></div>
+        </div>
+      </div>
+
+      <!-- Meta Info & Controls Row -->
+      <div class="vod-controls-row">
+        <!-- Left: Play/Volume -->
+        <div class="vod-controls-left">
+          <button id="vod-play-pause" class="vod-btn" data-focusable="true">▶️ Play</button>
+          <div class="vod-volume-control">
+            <span>🔊</span>
+            <div id="vod-volume-bar" class="volume-bar-mini">
+              <div id="vod-volume-fill" class="volume-fill-mini" style="width: 100%"></div>
+            </div>
+          </div>
+          <div id="vod-time" class="time-display">0:00 / 0:00</div>
+        </div>
+
+        <!-- Center: Title Info -->
+        <div class="vod-controls-center">
+          <div id="player-vod-title" class="vod-player-title">Movie Title</div>
+          <div id="player-vod-episode" class="vod-player-episode"></div>
+        </div>
+
+        <!-- Right: Tracks & Settings -->
+        <div class="vod-controls-right">
+          <button id="vod-audio-btn" class="vod-btn icon-btn" title="Audio" data-focusable="true">
+            💬 <span class="btn-label">Audio</span>
+          </button>
+          <button id="vod-subs-btn" class="vod-btn icon-btn" title="Subtitles" data-focusable="true">
+            📝 <span class="btn-label">Subs</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Track Selection Overlay (Hidden by default) -->
+      <div id="track-selection-overlay" class="track-selection hidden">
+        <div class="track-header">Select Track</div>
+        <div id="track-list" class="track-list">
+          <!-- Javascript will populate this -->
+        </div>
+        <button id="track-close-btn" class="track-close" data-focusable="true">Close</button>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="player-loading" class="player-loading">
+      <div class="spinner"></div>
+      <div id="player-loading-text" class="player-loading-text">Connecting to stream...</div>
+    </div>
+
+    <!-- Buffering Indicator -->
+    <div id="player-buffering" class="player-buffering hidden">
+      <div class="spinner"></div>
+      <div class="player-buffering-text">Buffering...</div>
+    </div>
+
+    <!-- Player Controls -->
+    <!-- Player Controls Overlay -->
+    <div id="player-controls" class="player-controls">
+
+      <!-- Top Right Utils (Clock, Date, Quality) -->
+      <div class="player-header-utils">
+        <div class="player-date" id="player-date">Mon, 01 Jan</div>
+        <div class="player-clock" id="player-clock">00:00</div>
+        <div class="player-quality-badge" id="player-quality-badge">HD</div>
+      </div>
+
+      <!-- Main Bottom Info Area -->
+      <div class="player-bottom-area">
+        <div class="player-info-row">
+          <!-- Channel Brand (Number & Logo) -->
+          <div class="player-channel-brand">
+            <div class="player-channel-number" id="player-channel-number">000</div>
+            <img id="player-channel-logo" class="player-channel-logo-img" src="" alt=""
+              onerror="this.style.display='none'">
+          </div>
+
+          <!-- Program Info -->
+          <div class="player-program-info">
+            <div id="player-channel-name" class="player-channel-name">Channel Name</div>
+            <!-- Removed Placeholder Text -->
+            <div id="player-epg-title" class="player-epg-title"></div>
+            <div class="player-meta-row">
+              <div id="player-status" class="player-status"></div>
+              <!-- Progress Bar Visual -->
+              <div class="player-progress-container">
+                <div class="player-progress-bar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Volume & Hints Row -->
+        <div class="player-footer-row">
+          <div class="volume-control">
+            <div class="volume-icon" id="volume-icon">🔊</div>
+            <div class="volume-bar">
+              <div class="volume-fill" id="volume-fill" style="width: 100%"></div>
+            </div>
+            <div class="volume-text" id="volume-text">100%</div>
+          </div>
+
+          <div class="player-hints">
+            <div class="hint-item"><span class="hint-key">▲ ▼</span> Channel</div>
+            <div class="hint-item"><span class="hint-key">OK</span> List</div>
+            <div class="hint-item"><span class="hint-key">BACK</span> Exit</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Debug Overlay -->
+  <div id="debug-overlay" class="debug-overlay hidden">
+    <div class="debug-header">Debug Logs</div>
+    <div id="debug-content" class="debug-content"></div>
+  </div>
+
+  <!-- Exit Confirmation Dialog -->
+  <div id="exit-dialog" class="exit-dialog hidden">
+    <div class="exit-dialog-content">
+      <div class="exit-title">Exit App</div>
+      <div class="exit-message">Do you want to exit the application or logout?</div>
+      <div class="exit-actions">
+        <button id="exit-cancel" class="btn btn-secondary" tabindex="0">Cancel</button>
+        <button id="exit-logout" class="btn btn-warning" tabindex="0">Logout</button>
+        <button id="exit-confirm" class="btn btn-primary" tabindex="0">Exit App</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Console - Removed -->
+
+  <!-- Scripts -->
+  <script src="webOSTVjs-1.2.10/webOSTV.js"></script>
+  <script src="js/luna-client.js"></script>
+  <script src="js/stalker-client.js"></script>
+  <script src="js/spatial_navigation.js"></script>
+  <script src="js/navigation.js"></script>
+  <script src="js/debug.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>

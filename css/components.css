@@ -1,0 +1,359 @@
+﻿/* Component Styles - TV Optimized */
+
+/* Buttons */
+.btn {
+  padding: 18px 36px;
+  font-size: 20px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.btn:focus {
+  box-shadow: 0 0 0 4px #fff, 0 0 20px rgba(99, 102, 241, 0.6);
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 2px; /* Border container */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  outline: none;
+  position: relative;
+}
+
+.card:focus {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 4px #fff, 0 10px 25px rgba(0,0,0,0.5);
+  z-index: 10;
+  background: #6366f1; /* Border glow */
+}
+
+/* Fix Channel Card Layout & Performance */
+.channel-card {
+  display: flex;
+  flex-direction: column;
+  background: #1e293b;
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  border: 3px solid transparent;
+  height: 200px; /* Taller for TV */
+  width: 100%;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* Force hide loading on player active if needed */
+.screen.active #player-loading.hidden {
+    display: none !important;
+}
+
+.channel-card[data-focused="true"],
+.channel-card:focus {
+  transform: scale(1.08);
+  border-color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(99, 102, 241, 0.5);
+  z-index: 10;
+  outline: none;
+  background: #283648;
+}
+
+.channel-card-logo {
+   width: 100%;
+   height: 120px; /* Larger logo area */
+   background: #0f172a;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   padding: 15px;
+}
+
+.channel-card-logo img {
+   max-width: 100%;
+   max-height: 100%;
+   object-fit: contain;
+   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.channel-card-info {
+   padding: 12px 16px;
+   display: flex;
+   flex-direction: column;
+   justify-content: center;
+   flex: 1;
+   background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+.channel-card-name {
+   font-size: 18px; /* Readable title */
+   font-weight: 600;
+   color: #f1f5f9;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   margin-bottom: 4px;
+}
+
+.channel-card[data-focused="true"] .channel-card-name {
+    color: #fff;
+}
+
+.channel-card-number {
+   font-size: 14px;
+   color: #94a3b8;
+   font-family: 'Consolas', monospace;
+   background: rgba(255,255,255,0.05);
+   align-self: flex-start;
+   padding: 2px 6px;
+   border-radius: 4px;
+}
+
+/* Enforce Grid Layout */
+.channels-grid {
+    display: grid;
+    /* Min column width ~220px for TV visibility */
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+    gap: 30px; /* Spaced out */
+    padding: 40px 50px; /* Internal padding */
+    width: 100%;
+    align-content: start;
+    padding-bottom: 100px; /* Space for scrolling */
+}
+
+/* Ensure Loading is centered in the grid area */
+.channels-grid .loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: auto;
+    height: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 5;
+}
+
+/* Player Overlay Styles (Reuse existing but verify z-index) */
+.player-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 10;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.7) 100%);
+}
+
+.player-controls.visible {
+  opacity: 1;
+}
+
+/* Top Right Utils */
+.player-header-utils {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 24px;
+  padding: 40px 60px;
+}
+
+.player-clock {
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.player-date {
+  font-size: 24px;
+  color: #e2e8f0;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+  padding-right: 24px;
+  border-right: 2px solid rgba(255,255,255,0.2);
+}
+
+.player-quality-badge {
+  padding: 8px 16px;
+  background: #6366f1;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+/* Bottom Area */
+.player-bottom-area {
+  padding: 50px 70px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.player-info-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+
+.player-channel-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    min-width: 140px;
+}
+
+.player-channel-number {
+  font-size: 64px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  text-shadow: 0 4px 8px rgba(0,0,0,0.8);
+}
+
+.player-channel-logo-img {
+  width: 120px;
+  height: 90px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+}
+
+.player-program-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.player-channel-name {
+  font-size: 28px;
+  font-weight: 600;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.player-epg-title {
+  font-size: 42px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+/* Hints */
+.player-hints {
+  display: flex;
+  gap: 32px;
+}
+
+.hint-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #cbd5e1;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.hint-key {
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-weight: 700;
+  color: #fff;
+  font-size: 16px;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Buffering Indicator - RESTORED */
+.player-buffering {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.player-buffering.hidden {
+  display: none !important;
+}
+
+.player-buffering .spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s infinite linear;
+}
+
+.player-buffering-text {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Player Loading Overlay - RESTORED */
+.player-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #000000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  z-index: 5; /* Above video(0), below controls(10) */
+}
+
+.player-loading .spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-left-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.player-loading .loading-text {
+  color: #94a3b8;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

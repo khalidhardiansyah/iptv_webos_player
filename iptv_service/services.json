@@ -1,0 +1,11 @@
+{
+  "id": "com.iptv.khalid.service",
+  "description": "IPTV Khalid Service",
+  "services": [
+    {
+      "name": "com.iptv.khalid.service",
+      "description": "IPTV Stalker proxy service",
+      "main": "helloworld_service.js"
+    }
+  ]
+}
