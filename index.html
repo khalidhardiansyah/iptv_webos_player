@@ -6,6 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IPTV Stalker</title>
 
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
   <!-- CSS -->
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/components.css">
@@ -14,10 +19,10 @@
   <link rel="stylesheet" href="css/debug.css">
   <link rel="stylesheet" href="css/logout.css">
 
-  <!-- mpegts.js for MPEG-TS playback -->
-  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+  <!-- mpegts.js for MPEG-TS playback (Official v1.8.0) -->
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js" defer></script>
   <!-- hls.js for HLS playback -->
-  <script src="js/hls.min.js"></script>
+  <script src="js/hls.min.js" defer></script>
 </head>
 
 <body>
@@ -45,7 +50,7 @@
       <div class="sidebar-header">
         <h2>Categories</h2>
         <input type="text" id="category-search" class="search-input" placeholder="Search categories..."
-          data-focusable="true">
+          aria-label="Search categories" data-focusable="true">
       </div>
       <div id="categories-container" class="sidebar-list"></div>
     </div>
@@ -55,9 +60,8 @@
       <div class="content-header">
         <h1 id="channels-title">Select a category</h1>
         <!-- Added Channel Search Input -->
-        <input type="text" id="channel-search" class="search-input" placeholder="Search channels..."
-          data-focusable="true"
-          style="margin-left: 20px; padding: 5px 10px; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white; width: 300px;">
+        <input type="text" id="channel-search" class="search-input header-search" placeholder="Search channels..."
+          aria-label="Search channels" data-focusable="true">
       </div>
       <div id="channels-container" class="channels-grid"></div>
     </div>
@@ -212,6 +216,7 @@
   <script src="webOSTVjs-1.2.10/webOSTV.js"></script>
   <script src="js/luna-client.js"></script>
   <script src="js/stalker-client.js"></script>
+  <script src="js/xtream-client.js"></script>
   <script src="js/spatial_navigation.js"></script>
   <script src="js/navigation.js"></script>
   <script src="js/debug.js"></script>

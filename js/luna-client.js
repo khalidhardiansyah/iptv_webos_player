@@ -89,6 +89,24 @@ class LunaClient {
     }
   }
 
+  async xtreamRequest(action, baseUrl, username, password, params = {}) {
+    try {
+      const response = await this.call('xtreamRequest', {
+        action: action,
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+        params: params
+      });
+      
+      // Return the data field from the response
+      return response.data || response;
+    } catch (error) {
+      console.error('Luna xtreamRequest failed:', error);
+      throw error;
+    }
+  }
+
   async streamProxy(streamUrl, baseUrl, mac) {
     try {
       const response = await this.call('streamProxy', {

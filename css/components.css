@@ -1,57 +1,58 @@
-﻿/* Component Styles - TV Optimized */
+/* Component Styles - TV Optimized */
 
 /* Buttons */
 .btn {
   padding: 18px 36px;
   font-size: 20px;
-  font-weight: 600;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: white;
+  font-weight: 700;
+  border: 4px solid var(--border-color, #333);
+  border-radius: 4px; /* Brutalist sharp */
+  background: var(--primary-color);
+  color: var(--background-dark); /* High contrast */
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   outline: none;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  box-shadow: 4px 4px 0px rgba(0,0,0,1);
 }
 
-.btn:focus {
-  box-shadow: 0 0 0 4px #fff, 0 0 20px rgba(99, 102, 241, 0.6);
-  transform: scale(1.05);
+.btn:focus, .btn:hover {
+  box-shadow: 8px 8px 0px rgba(0,0,0,1);
+  border-color: var(--text-primary);
+  transform: translateY(-4px);
   z-index: 10;
 }
 
 .card {
-  background: #1e293b;
-  border-radius: 16px;
+  background: var(--background-medium);
+  border-radius: 4px;
   padding: 2px; /* Border container */
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   outline: none;
   position: relative;
+  border: 4px solid var(--background-light);
 }
 
-.card:focus {
+.card:focus, .card:hover {
   transform: scale(1.05);
-  box-shadow: 0 0 0 4px #fff, 0 10px 25px rgba(0,0,0,0.5);
+  box-shadow: 8px 8px 0px var(--focus-ring);
+  border-color: var(--text-primary);
   z-index: 10;
-  background: #6366f1; /* Border glow */
 }
 
 /* Fix Channel Card Layout & Performance */
 .channel-card {
   display: flex;
   flex-direction: column;
-  background: #1e293b;
-  border-radius: 14px;
+  background: var(--background-medium);
+  border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
-  border: 3px solid transparent;
+  border: 4px solid var(--background-light);
   height: 200px; /* Taller for TV */
   width: 100%;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
 }
 
 /* Force hide loading on player active if needed */
@@ -60,30 +61,31 @@
 }
 
 .channel-card[data-focused="true"],
-.channel-card:focus {
-  transform: scale(1.08);
-  border-color: #fff;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(99, 102, 241, 0.5);
+.channel-card:focus,
+.channel-card:hover {
+  transform: scale(1.08) translateY(-4px);
+  border-color: var(--text-primary);
+  box-shadow: 12px 12px 0px var(--focus-ring);
   z-index: 10;
   outline: none;
-  background: #283648;
+  background: var(--background-light);
 }
 
 .channel-card-logo {
    width: 100%;
    height: 120px; /* Larger logo area */
-   background: #0f172a;
+   background: var(--background-dark);
    display: flex;
    align-items: center;
    justify-content: center;
    padding: 15px;
+   border-bottom: 2px solid var(--background-light);
 }
 
 .channel-card-logo img {
    max-width: 100%;
    max-height: 100%;
    object-fit: contain;
-   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
 }
 
 .channel-card-info {
@@ -92,13 +94,13 @@
    flex-direction: column;
    justify-content: center;
    flex: 1;
-   background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+   background: var(--background-medium);
 }
 
 .channel-card-name {
    font-size: 18px; /* Readable title */
-   font-weight: 600;
-   color: #f1f5f9;
+   font-weight: 800; /* Bolder */
+   color: var(--text-primary);
    white-space: nowrap;
    overflow: hidden;
    text-overflow: ellipsis;
@@ -106,17 +108,18 @@
 }
 
 .channel-card[data-focused="true"] .channel-card-name {
-    color: #fff;
+    color: var(--primary-color); /* Flashy active color */
 }
 
 .channel-card-number {
    font-size: 14px;
-   color: #94a3b8;
-   font-family: 'Consolas', monospace;
-   background: rgba(255,255,255,0.05);
+   color: var(--background-dark); /* Inverted */
+   font-weight: 700;
+   font-family: 'JetBrains Mono', monospace;
+   background: var(--text-secondary);
    align-self: flex-start;
    padding: 2px 6px;
-   border-radius: 4px;
+   border-radius: 2px;
 }
 
 /* Enforce Grid Layout */
@@ -178,6 +181,7 @@
 .player-clock {
   font-size: 32px;
   font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
   color: #fff;
   text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 }
@@ -193,7 +197,7 @@
 .player-quality-badge {
   padding: 8px 16px;
   background: #6366f1;
-  border-radius: 6px;
+  border-radius: 4px;
   color: #fff;
   font-weight: 800;
   font-size: 16px;
@@ -225,6 +229,7 @@
 .player-channel-number {
   font-size: 64px;
   font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
   color: #fff;
   line-height: 1;
   text-shadow: 0 4px 8px rgba(0,0,0,0.8);
@@ -280,7 +285,7 @@
   padding: 6px 14px;
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: 4px;
   font-weight: 700;
   color: #fff;
   font-size: 16px;
@@ -301,7 +306,7 @@
   gap: 15px;
   background: rgba(0, 0, 0, 0.7);
   padding: 20px;
-  border-radius: 12px;
+  border-radius: 4px;
 }
 
 .player-buffering.hidden {
@@ -356,4 +361,51 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Brutalist Skeletons */
+@keyframes skeletonPulse {
+  0% { opacity: 1; border-color: var(--background-light); }
+  50% { opacity: 0.5; border-color: var(--text-muted); }
+  100% { opacity: 1; border-color: var(--background-light); }
+}
+
+.skeleton-grid {
+  display: contents;
+}
+
+.skeleton-card {
+  height: 200px;
+  width: 100%;
+  background: var(--background-medium);
+  border: 4px solid var(--background-light);
+  border-radius: 4px;
+  animation: skeletonPulse 1.5s infinite ease-in-out;
+}
+
+.skeleton-vod-card {
+  width: 100%;
+  padding-top: 150%;
+  height: 0;
+  background: var(--background-medium);
+  border: 4px solid var(--background-light);
+  border-radius: 4px;
+  animation: skeletonPulse 1.5s infinite ease-in-out;
+}
+
+.skeleton-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+  width: 100%;
+}
+
+.skeleton-sidebar-item {
+  height: 60px;
+  width: 100%;
+  background: transparent;
+  border: 4px dashed var(--background-light);
+  border-radius: 4px;
+  animation: skeletonPulse 1.5s infinite ease-in-out;
 }

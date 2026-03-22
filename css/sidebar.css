@@ -1,22 +1,21 @@
-﻿/* Sidebar Layout Styles */
+/* Sidebar Layout Styles */
 .sidebar {
   position: fixed;
   left: 0;
   top: 0;
   width: 350px; /* Increased from 280px for TV readability */
   height: 100vh;
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--background-medium);
+  border-right: 4px solid var(--background-light);
   display: flex;
   flex-direction: column;
   z-index: 100;
-  box-shadow: 4px 0 20px rgba(0,0,0,0.5);
 }
 
 .sidebar-header {
   padding: 30px 25px; /* More breathing room */
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.95);
+  border-bottom: 4px solid var(--background-light);
+  background: var(--background-medium);
 }
 
 .sidebar-header h2 {
@@ -29,21 +28,24 @@
 
 .search-input {
   width: 100%;
-  padding: 16px 20px; /* Larger touch/focus targets */
-  background: rgba(255, 255, 255, 0.1);
-  border: 2px solid transparent;
-  border-radius: 12px;
-  color: #fff;
-  font-size: 18px; /* Readable from 10ft */
+  padding: 16px 20px;
+  background: var(--background-dark);
+  border: 4px solid var(--background-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-family: 'JetBrains Mono', monospace;
   outline: none;
-  transition: all 0.2s;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 4px 0px rgba(0,0,0,1);
 }
 
 .search-input:focus {
-  border-color: #6366f1;
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.5);
-  transform: scale(1.02);
+  border-color: var(--primary-color);
+  background: var(--text-primary);
+  color: var(--background-dark);
+  box-shadow: 8px 8px 0px var(--focus-ring);
+  transform: translateY(-2px);
 }
 
 .sidebar-list {
@@ -65,48 +67,48 @@
 }
 
 .category-item {
-  padding: 18px 24px; /* Generous padding */
+  padding: 18px 24px;
   margin-bottom: 12px;
   background: transparent;
-  border: 3px solid transparent; /* Prepare for focus border */
-  border-radius: 12px;
+  border: 4px solid transparent;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease-out;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .category-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--background-light);
 }
 
 /* TV Focus State */
 .category-item[data-focused="true"],
 .category-item:focus {
-  background: #6366f1;
-  border-color: #a5b4fc; /* Light border on focus */
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
-  transform: scale(1.05);
+  background: var(--background-light);
+  border-color: var(--text-primary);
+  box-shadow: 8px 8px 0px var(--focus-ring);
+  transform: scale(1.05) translateY(-4px);
   z-index: 2;
   outline: none;
 }
 
 .category-item.active {
-  background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(99, 102, 241, 0.5);
+  background: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 /* Active AND Focused */
 .category-item.active[data-focused="true"] {
-  background: #6366f1;
-  border-color: #fff;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .category-name {
-  font-size: 18px; /* TV Readable */
-  font-weight: 600;
-  color: #e2e8f0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-secondary);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -114,21 +116,41 @@
   margin-right: 12px;
 }
 
+.category-item.active .category-name {
+  color: var(--background-dark);
+}
+
 .category-item[data-focused="true"] .category-name {
-  color: #fff;
+  color: var(--text-primary);
+}
+
+.category-item.active[data-focused="true"] .category-name {
+  color: var(--background-dark);
 }
 
 .category-count {
   font-size: 14px;
-  color: #94a3b8;
-  background: rgba(0, 0, 0, 0.3);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 800;
+  color: var(--text-primary);
+  background: var(--background-dark);
   padding: 4px 10px;
-  border-radius: 10px;
+  border-radius: 4px;
   min-width: 30px;
   text-align: center;
 }
 
+.category-item.active .category-count {
+  background: var(--background-dark);
+  color: var(--primary-color);
+}
+
 .category-item[data-focused="true"] .category-count {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--primary-color);
+  color: var(--background-dark);
+}
+
+.category-item.active[data-focused="true"] .category-count {
+  background: var(--primary-color);
+  color: var(--background-dark);
 }

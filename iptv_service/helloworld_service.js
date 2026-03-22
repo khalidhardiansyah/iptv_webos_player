@@ -12,283 +12,260 @@ var http = require('http');
 var https = require('https');
 var url = require('url');
 
-// Create HTTP agents
-// DISABLE keepAlive to prevent ECONNRESET on buggy Stalker servers
-// Many IPTV middlewares drop idle connections aggressively
-var httpAgent = new http.Agent({ 
-	keepAlive: false,
-	maxSockets: 50,
-	timeout: 30000
+// --- KONFIGURASI AGENT UNTUK BYPASS FIREWALL ---
+// Menggunakan keepAlive: true sangat penting untuk meniru browser/STB
+var httpAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 50,
+    keepAliveMsecs: 3000
 });
 
-var httpsAgent = new https.Agent({ 
-	keepAlive: false,
-	maxSockets: 50,
-	timeout: 30000,
-    rejectUnauthorized: false, // IMPORTANT: Allow self-signed certs
-    minVersion: 'TLSv1' // maximize compatibility for old servers
+var httpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 50,
+    keepAliveMsecs: 3000,
+    rejectUnauthorized: false, // Abaikan error SSL self-signed
+    minVersion: 'TLSv1',
+    checkServerIdentity: function (host, cert) { return undefined; } // Bypass hostname check
 });
 
 var service = new Service(pkgInfo.name);
-// Timeout for Stalker Requests
 var STALKER_TIMEOUT = 30000;
 
-console.log('[Service] ===== SERVICE STARTING =====');
-console.log('[Service] Service name:', pkgInfo.name);
-console.log('[Service] Version:', pkgInfo.version);
+console.log('[Service] ===== SERVICE STARTING (STEALTH MODE) =====');
 
-// Prevent service crash on unhandled errors
-process.on('uncaughtException', function(err) {
-	console.error('[Service] ===== UNCAUGHT EXCEPTION =====');
-	console.error('[Service] Error:', err.message);
-	console.error('[Service] Stack:', err.stack);
-	console.error('[Service] Code:', err.code);
-	console.error('[Service] Errno:', err.errno);
-	console.error('[Service] Syscall:', err.syscall);
-	console.error('[Service] =====================================');
-	// Don't exit - keep service alive
+// Error Handling Global
+process.on('uncaughtException', function (err) {
+    console.error('[Service] UNCAUGHT:', err.message);
+});
+process.on('unhandledRejection', function (reason, p) {
+    console.error('[Service] REJECTION:', reason);
 });
 
-// Prevent crash on unhandled promise rejections
-process.on('unhandledRejection', function(reason, p) {
-	console.error('[Service] ===== UNHANDLED REJECTION =====');
-	console.error('[Service] Reason:', reason);
-	console.error('[Service] Promise:', p);
-	console.error('[Service] =====================================');
-	// Don't exit - keep service alive
-});
-
-// Store client sessions per MAC address
 var clients = {};
 
-// Stalker Client Class
+// --- CLASS STALKER CLIENT (MODIFIED) ---
 function StalkerClient(baseUrl, mac) {
     this.baseUrl = baseUrl;
+    // Pastikan URL diakhiri slash
+    if (!this.baseUrl.endsWith('/')) this.baseUrl += '/';
+
     this.mac = mac;
     this.token = null;
-    // Gunakan Timezone yang umum & Cookie standar
-    this.cookies = ['mac=' + encodeURIComponent(mac), 'stb_lang=en', 'timezone=Europe/Paris'];
-    
-    // Generate static ID signatures based on MAC to look like a real device
+
+    // SETUP COOKIE AWAL STANDAR MAG
+    // Timezone & Lang sangat penting agar tidak terdeteksi sebagai bot
+    this.cookies = [
+        'mac=' + encodeURIComponent(mac),
+        'stb_lang=en',
+        'timezone=Europe%2FParis', // Gunakan URL Encoded timezone
+        'display_menu_after_loading=true'
+    ];
+
+    // Generate Serial & Device ID dari MAC (Format standar emulator)
     var cleanMac = mac.replace(/:/g, '').toUpperCase();
-    this.serialNumber = cleanMac; // Use MAC as SN (Standard practice for emulators)
-    this.deviceId = cleanMac;     // Simplified Device ID
-    this.deviceId2 = cleanMac;    // Simplified Device ID 2
-    
-    console.log('[StalkerClient] Created client for MAC:', mac, 'SN:', this.serialNumber);
-    console.log('[StalkerClient] Base URL:', baseUrl);
+    this.serialNumber = cleanMac;
+    this.deviceId = cleanMac;
+    this.deviceId2 = cleanMac;
+
+    console.log('[StalkerClient] Init:', baseUrl, mac);
 }
 
-StalkerClient.prototype.makeRequest = function(action, params, method) {
+StalkerClient.prototype.makeRequest = function (action, params, method) {
     var self = this;
     var reqMethod = method || 'GET';
-    
+
+    // Portal Stalker biasanya ada di /c/ atau /portal.php
+    // Kita coba path standar stalker middleware
     var endpoints = [
-        'server/load.php',
-        'portal.php',
+        'server/load.php',       // Default modern
+        'portal.php',            // Default lama
         'stalker_portal/server/load.php'
     ];
 
-    var startIdx = (self.currentEndpointIndex !== undefined) ? self.currentEndpointIndex : 0;
-
+    // Helper untuk mencari endpoint yang benar
     function tryEndpoint(idx) {
         if (idx >= endpoints.length) {
-            return Promise.reject(new Error('All Stalker endpoints failed'));
+            return Promise.reject(new Error('All endpoints failed. Server might be down or incompatible.'));
         }
 
         var endpoint = endpoints[idx];
-        
-        return new Promise(function(resolve, reject) {
-            function doRequest(currentUrl, redirectCount) {
-                if (redirectCount > 5) {
-                    reject(new Error('Too many redirects'));
-                    return;
+        var apiUrl = self.baseUrl + endpoint;
+
+        // Cek jika baseUrl sudah mengandung /c/
+        if (!self.baseUrl.includes('/c/') && !self.baseUrl.includes('portal.php')) {
+            apiUrl = self.baseUrl + 'c/' + endpoint;
+        }
+
+        return new Promise(function (resolve, reject) {
+
+            // Build Parameters
+            var queryParams = [];
+            // Parameter wajib 'type' harus di awal
+            queryParams.push('type=' + encodeURIComponent(action));
+
+            // Masukkan params lain
+            if (params) {
+                for (var key in params) {
+                    if (params.hasOwnProperty(key)) {
+                        queryParams.push(key + '=' + encodeURIComponent(params[key]));
+                    }
+                }
+            }
+
+            // Tambahkan parameter anti-bot jika belum ada
+            if (!params.action && action !== 'handshake') {
+                queryParams.push('action=' + encodeURIComponent(action));
+            }
+
+            var bodyData = queryParams.join('&');
+            var fullUrl = apiUrl;
+
+            if (reqMethod === 'GET') {
+                fullUrl += '?' + bodyData;
+            }
+
+            var urlParts = url.parse(fullUrl);
+            var isHttps = urlParts.protocol === 'https:';
+            var port = urlParts.port || (isHttps ? 443 : 80);
+
+            // --- HEADER PENYAMARAN (STEALTH HEADERS) ---
+            // Using modern browser User-Agent to bypass Cloudflare/server blocks
+            var headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-User-Agent': 'Model: MAG250; Link: WiFi',
+                'Referer': self.baseUrl + 'c/',
+                'Origin': urlParts.protocol + '//' + urlParts.host,
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Accept-Encoding': 'gzip, deflate',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Connection': 'keep-alive',
+                'Cookie': self.cookies.join('; '),
+                'Host': urlParts.hostname + (urlParts.port && urlParts.port != 80 && urlParts.port != 443 ? ':' + urlParts.port : '')
+            };
+
+            // Tambahkan Authorization Bearer jika sudah login
+            if (self.token) {
+                headers['Authorization'] = 'Bearer ' + self.token;
+            }
+
+            if (reqMethod === 'POST') {
+                headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                headers['Content-Length'] = Buffer.byteLength(bodyData);
+            }
+
+            var options = {
+                hostname: urlParts.hostname,
+                port: port,
+                path: urlParts.path,
+                method: reqMethod,
+                headers: headers,
+                timeout: STALKER_TIMEOUT,
+                agent: isHttps ? httpsAgent : httpAgent
+            };
+
+            // Hapus header otomatis Node.js yang bisa memicu blokir
+            delete options.headers['expect'];
+
+            var req = (isHttps ? https : http).request(options, function (res) {
+                var data = '';
+
+                // --- UPDATE COOKIE DARI SERVER ---
+                // Server Stalker sering mengirim cookie baru saat handshake
+                if (res.headers['set-cookie']) {
+                    var newCookies = res.headers['set-cookie'];
+                    if (!Array.isArray(newCookies)) newCookies = [newCookies];
+
+                    newCookies.forEach(function (c) {
+                        var parts = c.split(';');
+                        var kv = parts[0].trim(); // nama=nilai
+                        // Cek apakah cookie sudah ada, jika ada update, jika tidak push
+                        var key = kv.split('=')[0];
+                        var updated = false;
+                        for (var i = 0; i < self.cookies.length; i++) {
+                            if (self.cookies[i].startsWith(key + '=')) {
+                                self.cookies[i] = kv;
+                                updated = true;
+                                break;
+                            }
+                        }
+                        if (!updated) self.cookies.push(kv);
+                    });
+                    // console.log('[Cookie] Updated:', self.cookies);
                 }
 
-                try {
-                    var fullUrl = currentUrl;
-                    var bodyData = '';
-                    
-                    if (redirectCount === 0) {
-                        var apiUrl = self.baseUrl + endpoint; 
-                        var queryParams = ['type=' + encodeURIComponent(action)];
-                        
-                        // Add params
-                        for (var key in params) {
-                            if (params.hasOwnProperty(key)) {
-                                queryParams.push(key + '=' + encodeURIComponent(params[key]));
-                            }
-                        }
-                        
-                        // Force additional standard params for every request (Anti-Ban)
-                        if (action !== 'handshake') {
-                            if (!params.action) queryParams.push('action=' + encodeURIComponent(action));
-                        }
+                res.setEncoding('utf8');
+                res.on('data', function (chunk) { data += chunk; });
 
-                        if (reqMethod === 'POST' || !method) {
-                            reqMethod = 'POST'; 
-                            fullUrl = apiUrl;
-                            bodyData = queryParams.join('&');
+                res.on('end', function () {
+                    // --- DETEKSI BLOKIR / HTML ERROR ---
+                    if (data.trim().startsWith('<')) {
+                        console.error('[StalkerClient] HTML Response detected (Error/Block):', data.substring(0, 150));
+
+                        if (data.indexOf('BANNED') !== -1 || data.indexOf('YOU ARE BA') !== -1) {
+                            reject(new Error('PORTAL_BLOCK: Server firewall memblokir request ini (Anti-Bot).'));
+                        } else if (res.statusCode === 404) {
+                            // Coba endpoint berikutnya jika 404
+                            reject(new Error('404 Not Found'));
                         } else {
-                            fullUrl = apiUrl + '?' + queryParams.join('&');
+                            // Terkadang server mengirim HTML error page standar
+                            reject(new Error('Server Error (HTML Response): ' + res.statusCode));
                         }
+                        return;
                     }
 
-                    console.log('[StalkerClient] Action:', action, 'Endpoint:', endpoint);
-
-                    var isHttps = fullUrl.startsWith('https://');
-                    var protocol = isHttps ? https : http;
-                    
-                    // URL Parsing Manual yang Lebih Aman
-                    var urlParts = url.parse(fullUrl);
-                    var hostname = urlParts.hostname;
-                    var port = urlParts.port || (isHttps ? 443 : 80);
-                    var path = urlParts.path;
-
-                    // Header Host yang Benar (Sertakan port jika bukan 80/443)
-                    var hostHeader = hostname;
-                    if (port !== 80 && port !== 443) {
-                        hostHeader = hostname + ':' + port;
+                    if (res.statusCode >= 400) {
+                        reject(new Error('HTTP ' + res.statusCode));
+                        return;
                     }
-                    
-                    // Referer Logic yang ketat
-                    var refererUrl = self.baseUrl;
-                    if (!refererUrl.endsWith('/')) refererUrl += '/';
-                    if (!refererUrl.includes('c/')) refererUrl += 'c/';
-                    refererUrl += 'index.html';
 
-                    var requestOptions = {
-                        hostname: hostname,
-                        port: port,
-                        path: path,
-                        method: reqMethod,
-                        headers: {
-                            'Host': hostHeader,
-                            'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3',
-                            'X-User-Agent': 'Model: MAG250; Link: WiFi',
-                            'Accept': '*/*',
-                            'Accept-Encoding': 'identity', // Hindari gzip issue di Nodejs simple
-                            'Referer': refererUrl,
-                            'Cookie': self.cookies.join('; '),
-                            'Connection': 'Keep-Alive'
-                        },
-                        timeout: STALKER_TIMEOUT, 
-                        agent: isHttps ? httpsAgent : httpAgent,
-                        rejectUnauthorized: false
-                    };
-                    
-                    // Hapus header otomatis Node.js yang sering memicu blokir
-                    delete requestOptions.headers['expect'];
-                    
-                    if (reqMethod === 'POST') {
-                        requestOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-                        requestOptions.headers['Content-Length'] = Buffer.byteLength(bodyData);
+                    try {
+                        if (!data) throw new Error('Empty response');
+                        var json = JSON.parse(data);
+                        resolve(json);
+                    } catch (e) {
+                        console.error('JSON Parse Error. Data:', data);
+                        reject(new Error('Invalid JSON from server'));
                     }
-                    
-                    if (self.token) {
-                        requestOptions.headers['Authorization'] = 'Bearer ' + self.token;
-                    }
-                    
-                    var req = protocol.request(requestOptions, function(res) {
-                        var data = '';
-                        
-                        // Handle Redirects
-                        if ([301, 302, 303, 307].indexOf(res.statusCode) > -1) {
-                            var redirectUrl = res.headers['location'];
-                            if (redirectUrl) {
-                                // Update cookies from redirect
-                                if (res.headers['set-cookie']) {
-                                    var setCookies = Array.isArray(res.headers['set-cookie']) ? res.headers['set-cookie'] : [res.headers['set-cookie']];
-                                    setCookies.forEach(function(cookieStr) {
-                                        var cookieValue = cookieStr.split(';')[0].trim();
-                                        self.cookies.push(cookieValue);
-                                    });
-                                }
-                                res.resume();
-                                
-                                // Resolve relative URL
-                                if (!redirectUrl.startsWith('http')) {
-                                    redirectUrl = (isHttps ? 'https://' : 'http://') + hostname + (redirectUrl.startsWith('/') ? '' : '/') + redirectUrl;
-                                }
-                                doRequest(redirectUrl, redirectCount + 1);
-                                return;
-                            }
-                        }
+                });
+            });
 
-                        // Capture Cookies (PENTING: Server sering kirim token di cookie)
-                        if (res.headers['set-cookie']) {
-                            var setCookies = Array.isArray(res.headers['set-cookie']) ? res.headers['set-cookie'] : [res.headers['set-cookie']];
-                            setCookies.forEach(function(cookieStr) {
-                                var cookieValue = cookieStr.split(';')[0].trim();
-                                self.cookies.push(cookieValue); 
-                            });
-                        }
-                        
-                        res.setEncoding('utf8');
-                        res.on('data', function(chunk) { data += chunk; });
-                        res.on('end', function() {
-                             if (res.statusCode >= 400 && res.statusCode !== 444) { // 444 ditangani oleh catch/retry logic
-                                reject(new Error('HTTP Error ' + res.statusCode));
-                                return;
-                            }
-                            try {
-                                if (!data || data.trim().length === 0) {
-                                     // Kadang 444/Empty response berarti server blokir, lempar error agar retry
-                                     throw new Error('Empty response (possible 444)');
-                                }
-                                resolve(JSON.parse(data));
-                            } catch (e) {
-                                reject(new Error('JSON Parse Error: ' + e.message + ' Data: ' + data.substring(0, 100)));
-                            }
-                        });
-                    });
-                    
-                    req.on('error', function(e) { 
-                        console.error('[StalkerClient] Request Error:', e.message);
-                        reject(e); 
-                    });
-                    
-                    if (reqMethod === 'POST') req.write(bodyData);
-                    req.end();
-                } catch (e) { reject(e); }
-            }
-            doRequest('', 0);
-        }).then(function(response) {
-            self.currentEndpointIndex = idx;
-            return response;
-        }).catch(function(err) {
-            console.warn('[StalkerClient] Action ' + action + ' failed on ' + endpoint + ':', err.message);
-            
-            // Retry logic untuk ECONNRESET atau 444
-            var isRetryable = err.message.includes('404') || err.message.includes('444') || err.message.includes('ECONNRESET') || err.message.includes('socket hang up') || action === 'handshake';
-            
-            if (isRetryable && idx < endpoints.length - 1) {
-                console.log('[StalkerClient] Retrying with next endpoint...');
-                return tryEndpoint(idx + 1);
-            }
-            throw err;
+            req.on('error', function (e) {
+                console.error('[Request Error]', e.message);
+                reject(e);
+            });
+
+            if (reqMethod === 'POST') req.write(bodyData);
+            req.end();
         });
     }
 
-    return tryEndpoint(startIdx);
+    // Retry logic wrapper
+    return tryEndpoint(0).catch(function (err) {
+        // Jika endpoint pertama gagal (404/Error), coba endpoint kedua
+        if (endpoints.length > 1) {
+            console.log('[StalkerClient] Endpoint 1 failed, trying fallback...');
+            return tryEndpoint(1);
+        }
+        throw err;
+    });
 };
 
-StalkerClient.prototype.handshake = function() {
+StalkerClient.prototype.handshake = function () {
     var self = this;
-    console.log('[StalkerClient] Handshake for MAC:', this.mac, 'SN:', this.serialNumber);
-    
-    // Randomization yang lebih baik
     var random = Math.floor(Math.random() * 1000000);
-    
-    // Gunakan parameter yang meniru MAG Box Asli agar tidak di-reset koneksinya
-    return this.makeRequest('stb', {
+
+    // --- STRATEGI HANDSHAKE PALING AMAN ---
+    // Menggunakan parameter 'stb' standar yang diterima semua versi stalker
+
+    var params = {
         action: 'handshake',
         type: 'stb',
-        token: '',
-        mac: this.mac,
+        token: '', // Kosong saat awal
+        mac: self.mac,
         random: random,
-        // Parameter Kritis untuk Anti-Ban:
-        sn: this.serialNumber,           // JANGAN GUNAKAN 00000
+        // Parameter Identitas Perangkat (Penting untuk Anti-Ban)
+        sn: self.serialNumber,
         stb_type: 'MAG250',
         ver: 'ImageDescription: 0.2.18-r14-250',
         image_version: '218',
@@ -296,778 +273,389 @@ StalkerClient.prototype.handshake = function() {
         hd: 1,
         not_valid_token: 0,
         hw_version: '1.7-BD-00',
-        device_id: this.deviceId,        // Beberapa portal wajib ini
-        device_id2: this.deviceId2,
-        signature: this.deviceId         // Kadang dibutuhkan
-    }).then(function(data) {
+        device_id: self.deviceId,
+        device_id2: self.deviceId2,
+        signature: self.deviceId
+    };
+
+    console.log('[Handshake] Sending request to', self.baseUrl);
+
+    return self.makeRequest('stb', params).then(function (data) {
         if (data && data.js && data.js.token) {
             self.token = data.js.token;
-            console.log('[StalkerClient] Handshake Success. Token:', self.token.substring(0, 10) + '...');
+            console.log('[Handshake] SUCCESS. Token:', self.token);
+            return true;
+        } else {
+            console.error('[Handshake] Failed. Response:', JSON.stringify(data));
+            throw new Error('Handshake failed: No token received');
         }
-        return data;
     });
 };
 
-StalkerClient.prototype.getMainInfo = function() {
-    console.log('[StalkerClient] Get Main Info (Account)...');
-    return this.makeRequest('account_info', {
-        action: 'get_main_info'
-    });
-};
+// --- SERVICE METHODS (Sama seperti sebelumnya tapi disederhanakan) ---
 
-StalkerClient.prototype.getProfile = function() {
-	console.log('[StalkerClient] Get profile...');
-	return this.makeRequest('stb', {
-		action: 'get_profile',
-        type: 'stb',
-		hd: 1,
-        ver: 'ImageDescription: 0.2.18-r14-250',
-		num_banks: 2,
-		sn: '0000000000000',
-		stb_type: 'MAG250',
-        image_version: '218',
-        video_out: 'hdmi',
-        device_id: '',
-        device_id2: '',
-        signature: '',
-        not_valid_token: 0,
-        auth_second_step: 0
-	});
-};
-
-StalkerClient.prototype.getCategories = function() {
-	console.log('[StalkerClient] Get categories...');
-	return this.makeRequest('itv', {
-		action: 'get_genres'
-	}).then(function(data) {
-		var categories = data.js || [];
-		console.log('[StalkerClient] Categories count:', categories.length);
-		return categories;
-	});
-};
-
-StalkerClient.prototype.getChannels = function(genreId) {
-	console.log('[StalkerClient] Get channels for genre:', genreId);
-	var self = this;
-	var allChannels = [];
-	var page = 1;
-	
-	// Limit for "All" category to prevent excessive loading
-	var isAllCategory = !genreId || genreId === '*';
-	// Reduce max limit to avoid long loading times (sequential requests)
-	var maxChannels = isAllCategory ? 500 : 1000;
-	var maxPages = isAllCategory ? 5 : 10;
-	
-	function fetchPage() {
-		return self.makeRequest('itv', {
-			action: 'get_ordered_list',
-			genre: genreId || '*',
-			force_ch_link_check: 0,
-			fav: 0,
-			sortby: 'number',
-			hd: 0,
-			p: page,
-			limit: 100
-		}).then(function(data) {
-			var channels = (data.js && data.js.data) || [];
-			console.log('[StalkerClient] Page ' + page + ' loaded, count:', channels.length);
-			
-			if (channels.length > 0) {
-				allChannels = allChannels.concat(channels);
-				
-				// Stop if we reached max channels
-				if (allChannels.length >= maxChannels) {
-					console.log('[StalkerClient] Reached max channels limit:', maxChannels);
-					return allChannels.slice(0, maxChannels);
-				}
-				
-				// Check if there are more pages
-				var totalItems = (data.js && data.js.total_items) || 0;
-				var hasMore = totalItems > allChannels.length;
-				
-				// Continue if there are more items and we haven't reached max pages
-				if (hasMore && page < maxPages) {
-					page++;
-					return fetchPage();
-				}
-			}
-			return allChannels;
-		});
-	}
-	
-	return fetchPage().then(function(channels) {
-		console.log('[StalkerClient] Total channels loaded:', channels.length);
-		return channels;
-	});
-};
-
-StalkerClient.prototype.searchChannels = function(query) {
-	console.log('[StalkerClient] Search channels for:', query);
-	var self = this;
-	var allChannels = [];
-	var page = 1;
-	var maxPages = 10;
-	
-	function fetchPage() {
-		return self.makeRequest('itv', {
-			action: 'get_ordered_list',
-			genre: '*',
-			force_ch_link_check: 0,
-			fav: 0,
-			sortby: 'name',
-			hd: 0,
-			p: page,
-			limit: 100
-		}).then(function(data) {
-			var channels = (data.js && data.js.data) || [];
-			
-			if (channels.length > 0) {
-				allChannels = allChannels.concat(channels);
-				var totalItems = (data.js && data.js.total_items) || 0;
-				var hasMore = totalItems > allChannels.length;
-				
-				if (hasMore && page < maxPages) {
-					page++;
-					return fetchPage();
-				}
-			}
-			return allChannels;
-		});
-	}
-	
-	return fetchPage().then(function(channels) {
-		var queryLower = query.toLowerCase();
-		var filtered = channels.filter(function(channel) {
-			var name = (channel.name || '').toLowerCase();
-			return name.indexOf(queryLower) !== -1;
-		});
-		return filtered;
-	});
-};
-
-StalkerClient.prototype.createLink = function(cmd) {
-	console.log('[StalkerClient] Create link for cmd:', cmd);
-	return this.makeRequest('itv', {
-		action: 'create_link',
-		cmd: cmd,
-		series: 0,
-		forced_storage: 0,
-		disable_ad: 0,
-		download: 0,
-		force_ch_link_check: 0
-	}).then(function(data) {
-		var streamUrl = null;
-		if (typeof data === 'string') {
-			streamUrl = data;
-		} else if (data.js && data.js.cmd) {
-			streamUrl = data.js.cmd;
-		} else if (data.cmd) {
-			streamUrl = data.cmd;
-		}
-		
-		if (streamUrl && streamUrl.startsWith('ffmpeg ')) {
-			streamUrl = streamUrl.substring(7);
-		}
-		
-		console.log('[StalkerClient] Stream URL:', streamUrl);
-		return streamUrl;
-	});
-};
-
-StalkerClient.prototype.getVodCategories = function() {
-	return this.makeRequest('vod', {
-		action: 'get_categories'
-	}).then(function(data) {
-		return data.js || [];
-	});
-};
-
-StalkerClient.prototype.getVodItems = function(categoryId, page) {
-	console.log('[StalkerClient] Get VOD items for category:', categoryId);
-	var self = this;
-	var allItems = [];
-	var currentPage = page || 1;
-	var maxItems = 1000;
-	var maxPages = 10;
-	
-	function fetchPage() {
-		return self.makeRequest('vod', {
-			action: 'get_ordered_list',
-			category: categoryId || '*',
-			sortby: 'added',
-			p: currentPage,
-			limit: 100
-		}).then(function(data) {
-			var items = (data.js && data.js.data) || [];
-			console.log('[StalkerClient] VOD Page ' + currentPage + ' loaded, count:', items.length);
-			
-			if (items.length > 0) {
-				allItems = allItems.concat(items);
-				
-				if (allItems.length >= maxItems) {
-					return { data: allItems.slice(0, maxItems), total_items: data.js.total_items };
-				}
-				
-				var totalItems = (data.js && data.js.total_items) || 0;
-				var hasMore = totalItems > allItems.length;
-				
-				if (hasMore && currentPage < maxPages) {
-					currentPage++;
-					return fetchPage();
-				}
-			}
-            // Return structure matching original expectation but with all items
-			return { data: allItems, total_items: (data.js ? data.js.total_items : allItems.length) };
-		});
-	}
-	
-	return fetchPage();
-};
-
-StalkerClient.prototype.createVodLink = function(cmd) {
-	return this.makeRequest('vod', {
-		action: 'create_link',
-		cmd: cmd,
-		series: 0
-	}).then(function(data) {
-		var streamUrl = null;
-		if (typeof data === 'string') {
-			streamUrl = data;
-		} else if (data.js && data.js.cmd) {
-			streamUrl = data.js.cmd;
-		} else if (data.cmd) {
-			streamUrl = data.cmd;
-		}
-		
-		if (streamUrl && streamUrl.startsWith('ffmpeg ')) {
-			streamUrl = streamUrl.substring(7).trim();
-		}
-		
-		return {
-            url: streamUrl,
-            js: data.js || data
-        };
-	});
-};
-
-StalkerClient.prototype.getSeriesInfo = function(vodId) {
-	return this.makeRequest('vod', {
-		action: 'get_ordered_list',
-		movie_id: vodId,
-		season_id: 0
-	}).then(function(data) {
-		return data.js || {};
-	});
-};
-
-StalkerClient.prototype.searchVod = function(query) {
-	return this.makeRequest('vod', {
-		action: 'get_ordered_list',
-		search: query,
-		sortby: 'added'
-	}).then(function(data) {
-		return data.js || {};
-    });
-};
-
-StalkerClient.prototype.getVodInfo = function(vodId) {
-    console.log('[StalkerClient] Get VOD Info for:', vodId);
-    return this.makeRequest('vod', {
-        action: 'vod_info',
-        movie_id: vodId
-    }).then(function(data) {
-        return data.js || {};
-    });
-};
-
-StalkerClient.prototype.logout = function() {
-	// Attempt to notify server (optional, best effort)
-	console.log('[StalkerClient] Logging out...');
-    
-    // Clear token locally
-    this.token = null;
-    
-    // Some portals support an 'logout' or 'exit' action, but it's inconsistent.
-    // We mainly want to clear our session state.
-	return Promise.resolve(true); 
-};
-
-
-// Get or create client
+// Helper untuk Get Client
 function getClient(baseUrl, mac) {
-	var key = mac;
-	if (!clients[key]) {
-		console.log('[Service] Creating new client for MAC:', mac);
-		clients[key] = new StalkerClient(baseUrl, mac);
-	}
-	return clients[key];
+    // Buat key unik
+    var key = mac + '@' + baseUrl;
+    if (!clients[key]) {
+        clients[key] = new StalkerClient(baseUrl, mac);
+    }
+    return clients[key];
 }
 
-// Stalker Request Handler
-service.register("stalkerRequest", function(message) {
-	try {
-		console.log("[stalkerRequest] ===== START =====");
-		console.log("[stalkerRequest] Action:", message.payload.action);
-		
-		var action = message.payload.action;
-		var baseUrl = message.payload.baseUrl;
-		var mac = message.payload.mac;
-		var params = message.payload.params || {};
-		
-		if (!baseUrl || !mac) {
-			message.respond({
-				returnValue: false,
-				errorText: "Missing baseUrl or mac"
-			});
-			return;
-		}
-		
-		var client = getClient(baseUrl, mac);
-		var promise;
-		
-		switch (action) {
-			case 'login':
-			case 'handshake':
-				promise = client.handshake().then(function() {
-					return client.getProfile().then(function() { return {success: true}; });
-				});
-				break;
-			case 'categories':
-				promise = client.getCategories();
-				break;
-			case 'channels':
-				promise = client.getChannels(params.genreId);
-				break;
-			case 'link':
-				promise = client.createLink(params.cmd);
-				break;
-			case 'search':
-				promise = client.searchChannels(params.query);
-				break;
-			case 'vod_categories':
-				promise = client.getVodCategories();
-				break;
-			case 'vod_items':
-				promise = client.getVodItems(params.categoryId, params.page);
-				break;
-			case 'vod_link':
-				promise = client.createVodLink(params.cmd);
-				break;
-			case 'series_info':
-				promise = client.getSeriesInfo(params.vodId);
-				break;
-            case 'vod_info':
-                promise = client.getVodInfo(params.vodId);
-                break;
-			case 'vod_search':
-				promise = client.searchVod(params.query);
-				break;
-            case 'logout':
-                promise = client.logout().then(function() {
-                    // Remove from active clients
-                    if (clients[mac]) {
-                        delete clients[mac];
-                        console.log('[Service] Removed client session for MAC:', mac);
-                    }
-                    return { success: true };
-                });
-                break;
-			default:
-				message.respond({
-					returnValue: false,
-					errorText: "Invalid action: " + action
-				});
-				return;
-		}
-		
-		promise
-			.then(function(result) {
-				message.respond({
-					returnValue: true,
-					data: result
-				});
-			})
-			.catch(function(error) {
-				console.error("[stalkerRequest] Error:", error);
-				message.respond({
-					returnValue: false,
-					errorText: error.message || 'Unknown error'
-				});
-			});
-	} catch (error) {
-		console.error("[stalkerRequest] Exception:", error);
-		message.respond({
-			returnValue: false,
-			errorText: "Service exception: " + error.message
-		});
-	}
+// --- CLASS XTREAM CLIENT (STEALTH MODE) ---
+function XtreamClient(baseUrl, username, password) {
+    this.baseUrl = baseUrl;
+    if (!this.baseUrl.endsWith('/')) this.baseUrl += '/';
+
+    this.username = username;
+    this.password = password;
+    this.token = null; // Some generic panels use tokens, but usually user/pass
+
+    console.log('[XtreamClient] Init:', baseUrl, username);
+}
+
+XtreamClient.prototype.makeRequest = function (action, params) {
+    var self = this;
+
+    // Construct Xtream API URL (player_api.php)
+    var apiUrl = self.baseUrl + 'player_api.php';
+
+    return new Promise(function (resolve, reject) {
+        var queryParams = [];
+        queryParams.push('username=' + encodeURIComponent(self.username));
+        queryParams.push('password=' + encodeURIComponent(self.password));
+
+        if (action) {
+            queryParams.push('action=' + encodeURIComponent(action));
+        }
+
+        if (params) {
+            for (var key in params) {
+                if (params.hasOwnProperty(key)) {
+                    queryParams.push(key + '=' + encodeURIComponent(params[key]));
+                }
+            }
+        }
+
+        var fullUrl = apiUrl + '?' + queryParams.join('&');
+        var urlParts = url.parse(fullUrl);
+        var isHttps = urlParts.protocol === 'https:';
+        var port = urlParts.port || (isHttps ? 443 : 80);
+
+        // STEALTH HEADERS FOR XTREAM (Mimic IPTVSmarters)
+        var headers = {
+            'User-Agent': 'IPTVSmartersPro', // Standard Valid UA for Xtream
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Connection': 'Keep-Alive',
+            'Host': urlParts.hostname
+        };
+
+        var options = {
+            hostname: urlParts.hostname,
+            port: port,
+            path: urlParts.path,
+            method: 'GET',
+            headers: headers,
+            timeout: STALKER_TIMEOUT,
+            agent: isHttps ? httpsAgent : httpAgent
+        };
+
+        delete options.headers['expect'];
+
+        var req = (isHttps ? https : http).request(options, function (res) {
+            var data = '';
+            res.setEncoding('utf8');
+            res.on('data', function (chunk) { data += chunk; });
+            res.on('end', function () {
+                if (res.statusCode >= 400) {
+                    reject(new Error('HTTP Error ' + res.statusCode));
+                    return;
+                }
+                try {
+                    if (!data) throw new Error('Empty response');
+                    var json = JSON.parse(data);
+                    resolve(json);
+                } catch (e) {
+                    // Start of standard Xtream might be empty or raw text
+                    console.error('[Xtream] JSON Parse Error. Data:', data.substring(0, 100));
+                    reject(new Error('Invalid JSON from Xtream server'));
+                }
+            });
+        });
+
+        req.on('error', function (e) {
+            console.error('[Xtream] Request Error:', e.message);
+            reject(e);
+        });
+
+        req.end();
+    });
+};
+
+XtreamClient.prototype.login = function () {
+    // Xtream login is just a request without action (returns user_info)
+    return this.makeRequest(null, {});
+};
+
+// Helper for Get Xtream Client
+function getXtreamClient(baseUrl, username, password) {
+    var key = 'xtream|' + baseUrl + '|' + username;
+    if (!clients[key]) {
+        clients[key] = new XtreamClient(baseUrl, username, password);
+    }
+    return clients[key];
+}
+
+
+service.register("stalkerRequest", function (message) {
+    var payload = message.payload;
+    var action = payload.action;
+    var baseUrl = payload.baseUrl;
+    var mac = payload.mac;
+    var params = payload.params || {};
+
+    if (!baseUrl || !mac) {
+        message.respond({ returnValue: false, errorText: "Missing params" });
+        return;
+    }
+
+    var client = getClient(baseUrl, mac);
+    var promise;
+
+    if (action === 'handshake') {
+        promise = client.handshake();
+    } else {
+        // Generic request wrapper
+        // Mapping 'categories', 'channels', 'link' ke API Stalker
+        if (action === 'categories') {
+            promise = client.makeRequest('itv', { action: 'get_genres' }).then(d => d.js || []);
+        }
+        else if (action === 'channels') {
+            promise = client.makeRequest('itv', {
+                action: 'get_ordered_list',
+                genre: params.genreId || '*',
+                force_ch_link_check: 0,
+                fav: 0,
+                sortby: 'number',
+                hd: 0,
+                p: params.p || 1 // Support pagination
+            }).then(d => (d.js && d.js.data) ? d.js.data : []);
+        }
+        else if (action === 'search') {
+            // Stalker Search (Global or Category)
+            promise = client.makeRequest('itv', {
+                action: 'get_ordered_list',
+                type: 'itv',
+                namelike: params.query,
+                force_ch_link_check: 0,
+                fav: 0,
+                p: 1 // Search results usually page 1
+            }).then(d => (d.js && d.js.data) ? d.js.data : []);
+        }
+        else if (action === 'link') {
+            promise = client.makeRequest('itv', {
+                action: 'create_link',
+                cmd: params.cmd,
+                force_ch_link_check: 0
+            }).then(d => {
+                var url = (d.js && d.js.cmd) ? d.js.cmd : d.cmd;
+                if (url) url = url.replace('ffmpeg ', '');
+                return url;
+            });
+        }
+        // VOD Methods
+        else if (action === 'vod_categories') {
+            promise = client.makeRequest('vod', { action: 'get_categories' }).then(d => d.js || []);
+        }
+        else if (action === 'vod_items') {
+            promise = client.makeRequest('vod', {
+                action: 'get_ordered_list',
+                category: params.categoryId || '*',
+                sortby: 'added',
+                p: params.page || 1
+            }).then(d => {
+                // Return full structure with data for frontend compatibility
+                return { data: (d.js && d.js.data) ? d.js.data : [] };
+            });
+        }
+        else if (action === 'vod_link') {
+            promise = client.makeRequest('vod', {
+                action: 'create_link',
+                cmd: params.cmd
+            }).then(d => {
+                var url = (d.js && d.js.cmd) ? d.js.cmd : '';
+                if (url) url = url.replace('ffmpeg ', '');
+                return { url: url, js: d.js || {} };
+            });
+        }
+        else if (action === 'series_info') {
+            promise = client.makeRequest('vod', {
+                action: 'get_ordered_list',
+                movie_id: params.vodId,
+                season_id: 0,
+                episode_id: 0
+            }).then(d => d.js || {});
+        }
+        else if (action === 'vod_search') {
+            promise = client.makeRequest('vod', {
+                action: 'get_ordered_list',
+                search: params.query,
+                p: 1
+            }).then(d => {
+                return { data: (d.js && d.js.data) ? d.js.data : [] };
+            });
+        }
+        // getUserInfo
+        else if (action === 'getUserInfo') {
+            promise = client.makeRequest('stb', {
+                action: 'get_profile',
+                type: 'stb',
+                hd: 1
+            }).then(d => {
+                return { info: d.js || {} };
+            });
+        }
+        // Default fallback untuk Profile dll
+        else if (action === 'get_profile') {
+            promise = client.makeRequest('stb', {
+                action: 'get_profile', type: 'stb', hd: 1,
+                stb_type: 'MAG250', sn: client.serialNumber
+            });
+        }
+        else {
+            // Direct pass-through untuk method lain
+            promise = client.makeRequest(params.type || 'stb', params);
+        }
+    }
+
+    promise.then(function (result) {
+        message.respond({ returnValue: true, data: result });
+    }).catch(function (err) {
+        message.respond({ returnValue: false, errorText: err.message });
+    });
 });
 
-// Stream Proxy
+service.register("xtreamRequest", function (message) {
+    var payload = message.payload;
+    var action = payload.action;
+    var baseUrl = payload.baseUrl;
+    var username = payload.username;
+    var password = payload.password;
+    var params = payload.params || {};
+
+    if (!baseUrl || !username || !password) {
+        message.respond({ returnValue: false, errorText: "Missing Xtream params (url, user, pass)" });
+        return;
+    }
+
+    var client = getXtreamClient(baseUrl, username, password);
+    var promise;
+
+    if (action === 'login') {
+        promise = client.login();
+    }
+    // MAPPING: Generic Frontend Actions -> Xtream API Actions
+    else if (action === 'categories' || action === 'get_live_categories') {
+        promise = client.makeRequest('get_live_categories');
+    }
+    else if (action === 'channels' || action === 'get_live_streams') {
+        var streamParams = {};
+        if (params.categoryId && params.categoryId !== '*') {
+            streamParams.category_id = params.categoryId;
+        }
+        promise = client.makeRequest('get_live_streams', streamParams);
+    }
+    else if (action === 'vod_categories' || action === 'get_vod_categories') {
+        promise = client.makeRequest('get_vod_categories');
+    }
+    else if (action === 'vod_items' || action === 'get_vod_streams') {
+        promise = client.makeRequest('get_vod_streams', { category_id: params.categoryId });
+    }
+    else if (action === 'series_categories' || action === 'get_series_categories') {
+        promise = client.makeRequest('get_series_categories');
+    }
+    else if (action === 'series' || action === 'get_series') {
+        promise = client.makeRequest('get_series', { category_id: params.categoryId });
+    }
+    else if (action === 'get_short_epg') {
+        promise = client.makeRequest('get_short_epg', { stream_id: params.streamId, limit: params.limit || 10 });
+    }
+    else if (action === 'link') {
+        // Xtream doesn't need a link request usually, we construct it client side or use stream_id
+        // But if needed for some reason:
+        promise = Promise.resolve({ url: client.baseUrl + 'live/' + client.username + '/' + client.password + '/' + params.streamId + '.ts' });
+    }
+    else {
+        // Direct passthrough
+        promise = client.makeRequest(action, params);
+    }
+
+    promise.then(function (result) {
+        message.respond({ returnValue: true, data: result });
+    }).catch(function (err) {
+        message.respond({ returnValue: false, errorText: err.message });
+    });
+});
+
+// --- STREAM PROXY SEDERHANA (Pass-Through) ---
+// Kita sederhanakan proxy agar tidak memicu blokir saat streaming
 var proxyServer = null;
-var proxyPort = 8080;
 var currentStreamUrl = null;
 var currentClient = null;
 
-// ADDED: Helper function to detect content type for LG TV
-// Improved Content-Type detection for WebOS
-function detectContentType(url, originalType) {
-    if (!url) return 'video/mp4';
-    var urlLower = url.toLowerCase();
-    
-    // Jika VOD MKV
-    if (urlLower.indexOf('.mkv') !== -1 || urlLower.indexOf('type=movie') !== -1) {
-        return 'video/x-matroska';
-    }
-    // Jika Live TV TS
-    if (urlLower.indexOf('.ts') !== -1 || urlLower.indexOf('live.php') !== -1 || urlLower.indexOf('extension=ts') !== -1) {
-        return 'video/mp2t';
-    }
-    
-    // Use original if available and not generic
-    if (originalType && originalType !== 'application/octet-stream') {
-        return originalType;
-    }
-    
-    // Fallback based on extension
-    if (urlLower.indexOf('.mp4') !== -1) return 'video/mp4';
-    if (urlLower.indexOf('.avi') !== -1) return 'video/x-msvideo';
-    if (urlLower.indexOf('.m3u8') !== -1) return 'application/vnd.apple.mpegurl';
-    
-    return 'video/mp4';
-}
-
-function initProxyServer() {
-	if (proxyServer) return;
-	
-	try {
-        // TIMEOUT CONFIGURATION (SOLUSI 3)
-        var STREAM_TIMEOUT = 120000; // 2 minutes for live streams
-        
-        // HTTP Agents with Keep-Alive
-        var httpAgent = new http.Agent({ 
-            keepAlive: true, 
-            maxSockets: 50,
-            timeout: STREAM_TIMEOUT
-        });
-
-        var httpsAgent = new https.Agent({ 
-            keepAlive: true, 
-            maxSockets: 50,
-            timeout: STREAM_TIMEOUT,
-            rejectUnauthorized: false
-        });
-
-        // Helper function to handle proxy requests with redirect support
-        function doProxyRequest(targetUrl, req, res, redirectCount, extraCookies) {
-             if (redirectCount > 5) {
-                 if (!res.headersSent) {
-                     res.writeHead(502, {'Content-Type': 'text/plain'});
-                     res.end('Too many redirects');
-                 }
-                 return;
-             }
-             
-            // Request Proxy
-			var isHttps = targetUrl.startsWith('https://');
-			var lib = isHttps ? https : http;
-			var urlWithoutProtocol = targetUrl.replace(/^https?:\/\//, '');
-			var pathStartIndex = urlWithoutProtocol.indexOf('/');
-			var hostPort = pathStartIndex === -1 ? urlWithoutProtocol : urlWithoutProtocol.substring(0, pathStartIndex);
-			var path = pathStartIndex === -1 ? '/' : urlWithoutProtocol.substring(pathStartIndex);
-			var portIndex = hostPort.indexOf(':');
-			var hostname = portIndex === -1 ? hostPort : hostPort.substring(0, portIndex);
-			var port = portIndex === -1 ? (isHttps ? 443 : 80) : parseInt(hostPort.substring(portIndex + 1));
-            
-            console.log('[StreamProxy] Requesting:', targetUrl);
-
-            var requestHeaders = {};
-            // Forward ALL headers from client first
-            for (var h in req.headers) {
-                if (h.toLowerCase() !== 'host') {
-                    requestHeaders[h] = req.headers[h];
-                }
-            }
-
-            // DETECT REQUEST TYPE
-            // User requested: include movie.php in stream detection
-            var isStreamRequest = targetUrl.includes('live.php') || targetUrl.includes('movie.php') || targetUrl.includes('extension=ts');
-            
-            // isApiRequest logic not needed if using else
-            
-            if (isStreamRequest) {
-                console.log('[StreamProxy] Mode: Streaming - Maintaining MAG250 Identity');
-                
-                // KUNCI: Gunakan UA yang sama dengan handshake
-                requestHeaders['User-Agent'] = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
-                requestHeaders['X-User-Agent'] = 'Model: MAG250; Link: WiFi';
-                
-                // KUNCI: Teruskan Cookie dan Token dari client aktif
-                if (currentClient) {
-                    if (currentClient.cookies) {
-                        var cookieStr = Array.isArray(currentClient.cookies) ? currentClient.cookies.join('; ') : currentClient.cookies;
-                        if (extraCookies && extraCookies.length > 0) {
-                            cookieStr += (cookieStr ? '; ' : '') + extraCookies.join('; ');
-                        }
-                        requestHeaders['Cookie'] = cookieStr;
-                    }
-                    if (currentClient.token) requestHeaders['Authorization'] = 'Bearer ' + currentClient.token;
-                    
-                    // Teruskan Referer (Sangat penting untuk portal go4k)
-                    // Teruskan Referer (Sangat penting untuk portal go4k)
-                    var refererUrl = currentClient.baseUrl;
-                    if (refererUrl) {
-                        // Normalize to end with /c/index.html
-                        if (!refererUrl.endsWith('/')) refererUrl += '/';
-                        if (refererUrl.endsWith('/c/')) refererUrl += 'index.html';
-                        else if (!refererUrl.includes('index.html')) refererUrl += 'c/index.html';
-                        
-                        requestHeaders['Referer'] = refererUrl;
-                    }
-                }
-
-                // Pastikan Connection tetap terbuka
-                requestHeaders['Connection'] = 'keep-alive';
-                requestHeaders['Icy-MetaData'] = '1';
-
-                // Teruskan Range header jika ada (Penting untuk VOD agar tidak Format Error)
-                if (req.headers['range']) {
-                    requestHeaders['Range'] = req.headers['range'];
-                } else {
-                     // Default range for streams if missing
-                     requestHeaders['Range'] = 'bytes=0-';
-                }
-            } else {
-                // API/PORTAL CONFIGURATION (Matches STB behavior)
-                console.log('[StreamProxy] Mode: API - STB Identity');
-                requestHeaders['User-Agent'] = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
-                requestHeaders['X-User-Agent'] = 'Model: MAG250; Link: WiFi';
-                
-                // Merge Cookies
-                var cookiesToSend = (currentClient && currentClient.cookies) ? currentClient.cookies.slice() : [];
-                if (extraCookies && extraCookies.length > 0) {
-                    cookiesToSend = cookiesToSend.concat(extraCookies);
-                }
-                requestHeaders['Cookie'] = cookiesToSend.join('; ');
-
-                // Referer logic
-                // Referer logic - FIXED to avoid double /c/
-                var refererUrl = (currentClient && currentClient.baseUrl) ? currentClient.baseUrl : '';
-                if (refererUrl && !refererUrl.includes('index.html')) {
-                    // Normalize slash
-                    if (!refererUrl.endsWith('/')) refererUrl += '/';
-                    
-                    // Check if it already has 'c/'
-                    if (refererUrl.endsWith('/c/')) {
-                        refererUrl += 'index.html';
-                    } else {
-                        refererUrl += 'c/index.html';
-                    }
-                }
-                requestHeaders['Referer'] = refererUrl;
-                
-                // Authorization Token
-                if (currentClient && currentClient.token) {
-                   requestHeaders['Authorization'] = 'Bearer ' + currentClient.token;
-                }
-                
-                requestHeaders['Connection'] = 'keep-alive';
-            }
-            
-            // Common cleanup
-            delete requestHeaders['host']; 
-            
-            var upstreamReq = lib.request({
-                hostname: hostname,
-                port: port,
-                path: path,
-                method: req.method === 'HEAD' ? 'HEAD' : 'GET',
-                headers: requestHeaders,
-                timeout: STREAM_TIMEOUT, 
-                agent: isHttps ? httpsAgent : httpAgent,
-                rejectUnauthorized: false
-            }, function(upstreamRes) {
-				// Handle redirects INTERNALLY (FIXED: added 303)
-				if (upstreamRes.statusCode === 302 || upstreamRes.statusCode === 301 || upstreamRes.statusCode === 303 || upstreamRes.statusCode === 307) {
-					var redirectUrl = upstreamRes.headers['location'];
-					if (redirectUrl) {
-                        console.log('[StreamProxy] Following redirect (' + (redirectCount + 1) + ') to:', redirectUrl);
-                        upstreamRes.resume(); // Discard body
-                        
-                        // Handle relative redirects
-                        if (!redirectUrl.startsWith('http')) {
-                            var protocol = isHttps ? 'https://' : 'http://';
-                            redirectUrl = protocol + hostname + (redirectUrl.startsWith('/') ? '' : '/') + redirectUrl;
-                        }
-                        
-                        // Capture Set-Cookie for next request
-                        var nextCookies = (extraCookies || []).slice();
-                        var newCookies = upstreamRes.headers['set-cookie'];
-                        if (newCookies) {
-                            newCookies.forEach(function(c) {
-                                // Extract name=value part (before first semicolon)
-                                var parts = c.split(';');
-                                if (parts.length > 0) nextCookies.push(parts[0].trim());
-                            });
-                            console.log('[StreamProxy] Captured ' + newCookies.length + ' new cookies from redirect');
-                        }
-                        
-						doProxyRequest(redirectUrl, req, res, redirectCount + 1, nextCookies);
-						return; 
-					}
-				}
-                
-                if (upstreamRes.statusCode !== 200 && upstreamRes.statusCode !== 206) {
-                    console.error('[StreamProxy] Bad Upstream Status:', upstreamRes.statusCode);
-                }
-				
-                // Event Handling for Debugging (SOLUSI 1)
-                upstreamRes.on('aborted', function() { console.error('[StreamProxy] Upstream connection aborted'); });
-                upstreamRes.on('close', function() { console.log('[StreamProxy] Upstream connection closed'); });
-                
-				var responseHeaders = {};
-                
-                // Hop-by-hop headers that should NOT be forwarded
-                var hopByHopHeaders = [
-                    'connection',
-                    'keep-alive',
-                    'proxy-authenticate',
-                    'proxy-authorization',
-                    'te',
-                    'trailer',
-                    'transfer-encoding',
-                    'upgrade',
-                    'host',
-                    'content-length' // FIXED: Strip Content-Length for proxying to allow chunked/streamed
-                ];
-                
-                // Forward uppercase/lowercase compatible headers
-                for (var h in upstreamRes.headers) {
-                    if (hopByHopHeaders.indexOf(h.toLowerCase()) === -1) {
-                        responseHeaders[h] = upstreamRes.headers[h];
-                    }
-                }
-                
-                // FIXED: Better Content-Type detection for LG TV
-                var originalContentType = responseHeaders['content-type'] || '';
-                console.log('[StreamProxy] Original Content-Type:', originalContentType);
-                
-                var detectedType = detectContentType(currentStreamUrl, originalContentType);
-                if (detectedType) {
-                    console.log('[StreamProxy] Setting Content-Type to:', detectedType);
-                    responseHeaders['content-type'] = detectedType;
-                }
-                
-                // FIXED: Complete CORS headers
-				responseHeaders['Access-Control-Allow-Origin'] = '*';
-                responseHeaders['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
-                responseHeaders['Access-Control-Allow-Headers'] = 'Range, Content-Type';
-                responseHeaders['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range, Content-Type';
-                
-                // FIXED: Ensure Accept-Ranges is forwarded for seeking support
-                if (upstreamRes.headers['accept-ranges']) {
-                    responseHeaders['Accept-Ranges'] = upstreamRes.headers['accept-ranges'];
-                }
-                
-                console.log('[StreamProxy] Upstream Response:', upstreamRes.statusCode, 'Headers:', JSON.stringify(responseHeaders));
-				
-				res.writeHead(upstreamRes.statusCode, responseHeaders);
-				upstreamRes.pipe(res);
-                
-                let bytesTransferred = 0;
-                upstreamRes.on('data', (chunk) => { bytesTransferred += chunk.length; });
-                upstreamRes.on('end', () => console.log('[StreamProxy] Upstream ended. Total Bytes:', bytesTransferred));
-                upstreamRes.on('close', () => console.log('[StreamProxy] Upstream closed.'));
-                
-                res.on('close', () => {
-                     console.log('[StreamProxy] Client (TV) closed connection. Bytes sent:', bytesTransferred);
-                     upstreamReq.destroy(); // Ensure upstream is killed
-                });
-			});
-			
-			upstreamReq.on('error', function(err) {
-				console.error('[StreamProxy] Upstream Request Error:', err);
-				if (!res.headersSent) {
-					res.writeHead(502);
-					res.end('Proxy Error: ' + err.message);
-				}
-			});
-			
-			upstreamReq.on('timeout', function() {
-                console.error('[StreamProxy] Upstream Timeout');
-				upstreamReq.destroy();
-				if (!res.headersSent) {
-					res.writeHead(504);
-					res.end('Proxy Timeout');
-				}
-			});
-			
-			upstreamReq.end();
+function initProxy() {
+    proxyServer = http.createServer(function (req, res) {
+        if (!currentStreamUrl) {
+            res.writeHead(404);
+            res.end();
+            return;
         }
 
-		proxyServer = http.createServer(function(req, res) {
-			// CORS
-			res.setHeader('Access-Control-Allow-Origin', '*');
-			res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS, POST');
-			res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Icy-MetaData');
-			
-			if (req.method === 'OPTIONS') {
-				res.writeHead(200);
-				res.end();
-				return;
-			}
+        var u = url.parse(currentStreamUrl);
+        var options = {
+            hostname: u.hostname,
+            port: u.port || 80,
+            path: u.path,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Cookie': currentClient ? currentClient.cookies.join('; ') : '',
+                'Connection': 'keep-alive',
+                'Accept': '*/*'
+            }
+        };
 
-			if (!currentStreamUrl || !currentClient) {
-				res.writeHead(500, {'Content-Type': 'text/plain'});
-				res.end('No active stream');
-				return;
-			}
-			
-            doProxyRequest(currentStreamUrl, req, res, 0, []);
-		});
-		
-		proxyServer.listen(proxyPort, function() {
-			console.log('[StreamProxy] Proxy server listening on port', proxyPort);
-		});
-	} catch (e) {
-		console.error('Failed to init proxy:', e);
-	}
+        var proxyReq = http.request(options, function (proxyRes) {
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            proxyRes.pipe(res);
+        });
+
+        proxyReq.on('error', function (err) {
+            console.error('Proxy Error:', err);
+            res.end();
+        });
+
+        proxyReq.end();
+    });
+    proxyServer.listen(8080);
 }
+initProxy();
 
-initProxyServer();
+service.register("streamProxy", function (message) {
+    currentStreamUrl = message.payload.url;
+    // Cari client yang aktif untuk ambil cookie-nya
+    var key = message.payload.mac + '@' + message.payload.baseUrl;
+    currentClient = clients[key];
 
-service.register("streamProxy", function(message) {
-    var url = message.payload.url;
-    var baseUrl = message.payload.baseUrl;
-    var mac = message.payload.mac;
-    
-    if (url && baseUrl && mac) {
-        currentStreamUrl = url;
-        currentClient = getClient(baseUrl, mac);
-        message.respond({
-            returnValue: true,
-            proxyUrl: "http://localhost:" + proxyPort + "/stream"
-        });
-    } else {
-        var missing = [];
-        if (!url) missing.push('url');
-        if (!baseUrl) missing.push('baseUrl');
-        if (!mac) missing.push('mac');
-        
-        console.error('[streamProxy] Missing params:', missing.join(', '), 'Payload:', JSON.stringify(message.payload));
-        
-        message.respond({
-            returnValue: false,
-            errorText: "Missing params: " + missing.join(', ')
-        });
-    }
-});
-
-
-
-service.register("heartbeat", function(message) {
     message.respond({
         returnValue: true,
-        event: "beat"
+        proxyUrl: "http://localhost:8080/stream.ts"
     });
+});
+
+service.register("heartbeat", function (message) {
+    message.respond({ returnValue: true });
 });

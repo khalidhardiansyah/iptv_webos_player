@@ -1,0 +1,11 @@
+.agent
+.agent/**
+.agents
+.agents/**
+.git
+.git/**
+.impeccable.md
+CLI_GUIDE.md
+*.ipk
+node_modules
+node_modules/**
